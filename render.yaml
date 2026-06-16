@@ -1,17 +1,16 @@
 # Render Blueprint — backend only (frontend is deployed separately on Vercel).
-# New > Blueprint > connect this repo. You'll be prompted for GEMINI_API_KEY.
+# New > Blueprint > connect this repo. You'll be prompted for GEMINI_API_KEY and
+# DATABASE_URL.
 #
 # 100% free tier:
 #   - velora-api    : free web service (runs FastAPI + the Celery worker together)
-#   - velora-db     : free Postgres (expires after 30 days)
 #   - velora-redis  : free Key Value / Redis (25 MB)
+#   - Postgres      : reuse your EXISTING free Render Postgres (Render allows only
+#                     one free DB per account, so this Blueprint does NOT create
+#                     one). Paste its Internal Database URL into DATABASE_URL when
+#                     prompted. The app normalises the postgres:// URL for you.
+#
 # Free web services sleep when idle (~30-60s cold start on the next request).
-
-databases:
-  - name: velora-db
-    databaseName: transactions
-    user: velora
-    plan: free
 
 services:
   # ---- Redis (Celery broker / result backend) ----
@@ -35,9 +34,7 @@ services:
     dockerCommand: 'sh -c "celery -A app.celery_app.celery_app worker --loglevel=info --concurrency=1 & uvicorn app.main:app --host 0.0.0.0 --port $PORT"'
     envVars:
       - key: DATABASE_URL
-        fromDatabase:
-          name: velora-db
-          property: connectionString
+        sync: false            # paste your existing Render Postgres Internal URL
       - key: REDIS_URL
         fromService:
           type: redis
