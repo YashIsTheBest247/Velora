@@ -1,0 +1,51 @@
+# Render Blueprint — backend only (frontend is deployed separately on Vercel).
+# New > Blueprint > connect this repo. You'll be prompted for GEMINI_API_KEY.
+#
+# 100% free tier:
+#   - velora-api    : free web service (runs FastAPI + the Celery worker together)
+#   - velora-db     : free Postgres (expires after 30 days)
+#   - velora-redis  : free Key Value / Redis (25 MB)
+# Free web services sleep when idle (~30-60s cold start on the next request).
+
+databases:
+  - name: velora-db
+    databaseName: transactions
+    user: velora
+    plan: free
+
+services:
+  # ---- Redis (Celery broker / result backend) ----
+  - type: redis
+    name: velora-redis
+    plan: free
+    ipAllowList: []           # internal-only (no public access)
+    maxmemoryPolicy: noeviction
+
+  # ---- FastAPI + Celery worker in one free container ----
+  - type: web
+    name: velora-api
+    runtime: docker
+    rootDir: backend
+    dockerfilePath: Dockerfile
+    dockerContext: .
+    plan: free
+    healthCheckPath: /health
+    # Start the worker in the background, then the API in the foreground so the
+    # whole thing fits on a single free instance (no paid Background Worker).
+    dockerCommand: 'sh -c "celery -A app.celery_app.celery_app worker --loglevel=info --concurrency=1 & uvicorn app.main:app --host 0.0.0.0 --port $PORT"'
+    envVars:
+      - key: DATABASE_URL
+        fromDatabase:
+          name: velora-db
+          property: connectionString
+      - key: REDIS_URL
+        fromService:
+          type: redis
+          name: velora-redis
+          property: connectionString
+      - key: GEMINI_API_KEY
+        sync: false            # set in the dashboard (secret); blank = heuristic fallback
+      - key: GEMINI_MODEL
+        value: gemini-flash-latest
+      - key: CORS_ORIGINS
+        sync: false            # set to your Vercel URL after the frontend is live
