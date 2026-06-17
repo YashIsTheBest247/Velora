@@ -53,6 +53,24 @@ class LLMError(Exception):
     """Raised when an LLM call fails and should be retried."""
 
 
+class QuotaError(Exception):
+    """Raised on 429 / quota-exhausted. NOT retried — retrying won't help, so we
+    fall back to the heuristic immediately instead of stalling on backoffs."""
+
+
+# Bound each network call so a single request can't hang the worker (the SDK
+# can otherwise honour a server-supplied retry_delay of tens of seconds).
+_REQUEST_TIMEOUT = 30
+
+
+def _classify_exception(exc: Exception) -> Exception:
+    """Map a raw SDK error to QuotaError (fail fast) or LLMError (retry)."""
+    msg = str(exc).lower()
+    if "429" in msg or "quota" in msg or "exhaust" in msg or "rate limit" in msg:
+        return QuotaError(str(exc))
+    return LLMError(str(exc))
+
+
 def llm_enabled() -> bool:
     return bool(settings.gemini_api_key)
 
@@ -103,12 +121,14 @@ def _classify_call(items: list[dict]) -> dict[int, str]:
         f"Transactions:\n{json.dumps(payload)}"
     )
     try:
-        resp = model.generate_content(prompt)
+        resp = model.generate_content(
+            prompt, request_options={"timeout": _REQUEST_TIMEOUT}
+        )
         data = _extract_json(resp.text)
     except LLMError:
         raise
     except Exception as exc:  # network / quota / parsing
-        raise LLMError(str(exc)) from exc
+        raise _classify_exception(exc) from exc
 
     result: dict[int, str] = {}
     for key, val in data.items():
@@ -166,12 +186,14 @@ def _summary_call(stats: dict) -> dict:
         f"Statistics:\n{json.dumps(stats)}"
     )
     try:
-        resp = model.generate_content(prompt)
+        resp = model.generate_content(
+            prompt, request_options={"timeout": _REQUEST_TIMEOUT}
+        )
         data = _extract_json(resp.text)
     except LLMError:
         raise
     except Exception as exc:
-        raise LLMError(str(exc)) from exc
+        raise _classify_exception(exc) from exc
 
     narrative = str(data.get("narrative", "")).strip()
     risk = str(data.get("risk_level", "")).strip().lower()

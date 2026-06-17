@@ -5,6 +5,7 @@ from collections import defaultdict
 from datetime import datetime
 
 import pandas as pd
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.config import settings
@@ -103,6 +104,14 @@ def run_pipeline(job_id: int, db: Session) -> None:
         )
         df["category"] = effective_category
 
+        # The job may have been deleted by the user while we were processing
+        # (e.g. during a long LLM retry). If so, abort cleanly — there is
+        # nothing to persist and inserting would violate the FK constraint.
+        if db.get(Job, job_id) is None:
+            logger.info("Job %s was deleted during processing; aborting.", job_id)
+            db.rollback()
+            return
+
         # --- Persist transactions ----------------------------------------- #
         db.query(Transaction).filter(Transaction.job_id == job_id).delete()
         for idx, row in df.iterrows():
@@ -146,6 +155,11 @@ def run_pipeline(job_id: int, db: Session) -> None:
         job.completed_at = datetime.utcnow()
         db.commit()
         logger.info("Job %s completed: %s clean rows", job_id, len(df))
+
+    except IntegrityError:
+        # Lost the race: job deleted between our existence check and commit.
+        logger.info("Job %s was deleted during processing; nothing persisted.", job_id)
+        db.rollback()
 
     except Exception as exc:  # noqa: BLE001 — pipeline must surface as failed job
         logger.exception("Job %s failed", job_id)
