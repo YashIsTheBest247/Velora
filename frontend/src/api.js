@@ -50,3 +50,9 @@ export function getStatus(jobId) {
 export function getResults(jobId) {
   return fetch(`${API_BASE}/jobs/${jobId}/results`).then(handle);
 }
+
+export function deleteJob(jobId) {
+  return fetch(`${API_BASE}/jobs/${jobId}`, { method: "DELETE" }).then((res) => {
+    if (!res.ok) throw new Error("Failed to delete job.");
+  });
+}

@@ -135,3 +135,13 @@ def list_jobs(
         query = query.filter(Job.status == status)
     jobs = query.order_by(Job.created_at.desc()).all()
     return [JobListItem.model_validate(j) for j in jobs]
+
+
+@router.delete("/{job_id}", status_code=204)
+def delete_job(job_id: int, db: Session = Depends(get_db)):
+    """Delete a job and cascade-remove its transactions and summary."""
+    job = db.query(Job).get(job_id)
+    if job is None:
+        raise HTTPException(status_code=404, detail="Job not found.")
+    db.delete(job)  # ORM cascade removes Transaction + JobSummary rows
+    db.commit()

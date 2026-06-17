@@ -1,6 +1,13 @@
 import { useEffect, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
-import { listJobs } from "../api";
+import { deleteJob, listJobs } from "../api";
+
+const IconTrash = () => (
+  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+    strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M3 6h18M8 6V4h8v2M19 6l-1 14H6L5 6M10 11v6M14 11v6" />
+  </svg>
+);
 
 const FILTERS = ["all", "pending", "processing", "completed", "failed"];
 
@@ -33,6 +40,18 @@ export default function JobList({ refreshKey, onOpen, search = "" }) {
       setErr(null);
     } catch (e) {
       setErr(e.message);
+    }
+  }
+
+  async function remove(e, id) {
+    e.stopPropagation();
+    if (!window.confirm(`Delete job #${id}? Its transactions and report are removed.`))
+      return;
+    try {
+      await deleteJob(id);
+      setJobs((prev) => prev.filter((j) => j.id !== id));
+    } catch (err) {
+      setErr(err.message);
     }
   }
 
@@ -89,6 +108,13 @@ export default function JobList({ refreshKey, onOpen, search = "" }) {
               </div>
             </div>
             <span className={`badge ${j.status}`}>{j.status}</span>
+            <button
+              className="icon-del"
+              title="Delete job"
+              onClick={(e) => remove(e, j.id)}
+            >
+              <IconTrash />
+            </button>
           </motion.div>
         ))}
       </AnimatePresence>
