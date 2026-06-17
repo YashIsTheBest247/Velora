@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import { deleteJob, listJobs } from "../api";
+import ConfirmModal from "./ConfirmModal";
 
 const IconTrash = () => (
   <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor"
@@ -23,6 +24,8 @@ export default function JobList({ refreshKey, onOpen, search = "" }) {
   const [filter, setFilter] = useState("all");
   const [jobs, setJobs] = useState([]);
   const [err, setErr] = useState(null);
+  const [confirmId, setConfirmId] = useState(null);
+  const [deleting, setDeleting] = useState(false);
 
   const q = search.trim().toLowerCase();
   const visible = q
@@ -43,15 +46,21 @@ export default function JobList({ refreshKey, onOpen, search = "" }) {
     }
   }
 
-  async function remove(e, id) {
+  function askDelete(e, id) {
     e.stopPropagation();
-    if (!window.confirm(`Delete job #${id}? Its transactions and report are removed.`))
-      return;
+    setConfirmId(id);
+  }
+
+  async function confirmDelete() {
+    setDeleting(true);
     try {
-      await deleteJob(id);
-      setJobs((prev) => prev.filter((j) => j.id !== id));
+      await deleteJob(confirmId);
+      setJobs((prev) => prev.filter((j) => j.id !== confirmId));
+      setConfirmId(null);
     } catch (err) {
       setErr(err.message);
+    } finally {
+      setDeleting(false);
     }
   }
 
@@ -111,13 +120,23 @@ export default function JobList({ refreshKey, onOpen, search = "" }) {
             <button
               className="icon-del"
               title="Delete job"
-              onClick={(e) => remove(e, j.id)}
+              onClick={(e) => askDelete(e, j.id)}
             >
               <IconTrash />
             </button>
           </motion.div>
         ))}
       </AnimatePresence>
+
+      <ConfirmModal
+        open={confirmId !== null}
+        title={`Delete job #${confirmId}?`}
+        message="This permanently removes the job along with its transactions and report. This can't be undone."
+        confirmLabel="Delete job"
+        busy={deleting}
+        onConfirm={confirmDelete}
+        onCancel={() => !deleting && setConfirmId(null)}
+      />
     </div>
   );
 }
